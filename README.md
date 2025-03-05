@@ -3,7 +3,7 @@
 ## Team Member
 
 - Aziz Zafar ()
-- Naufa Amirani ()
+- Naufa Amirani (nfa2120@cumc.columbia.edu)
 - Di Liu (dl3738@cumc.columbia.edu)
 
 # Data Source
