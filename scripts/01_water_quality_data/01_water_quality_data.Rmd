@@ -1,0 +1,314 @@
+---
+title: "01_water_quality_data"
+author: "Di Liu"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+    code_folding: show
+    self_contained: True
+---
+
+```{r setup, include=FALSE}
+## Global options
+knitr::opts_chunk$set(cache = TRUE, echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r, results='hide', warning=FALSE, message = FALSE}
+library(dplyr)
+library(readxl)
+library(lubridate)
+
+library(ggplot2)
+
+library(sf)
+library(leaflet)
+```
+
+# Read in raw data
+
+The raw data is from [Water Quality Data in NYC](https://data.cityofnewyork.us/Environment/Drinking-Water-Quality-Distribution-Monitoring-Dat/bkwf-xfky/about_data).
+
+```{r}
+water_quality <- read.csv("../../data/raw_data/Drinking_Water_Quality_Distribution_Monitoring_Data_20250416.csv")
+sample_site <- read_excel("../../data/raw_data/OpenData_Distribution_Water_Quality_Sampling_Sites_Updated_2021-0618.xlsx", sheet = 1)
+```
+
+# EDA and Data Filtering
+
+All variables:
+
+```{r}
+names(water_quality)
+```
+
+The water quality data contain variables as below (Since we don't have detailed explanation from the website, all explanation is based on my own understanding):
+
+Sample level:
+
+- Sample Number: A unique identifier assigned to each water sample.
+- Sample Date: The date when the water sample was collected. It is usually formatted as MM/DD/YYYY.
+- Sample Time: The time when the water sample was taken (timestamp format (ISO 8601)), providing precise timing. **Here we don't need such precise timing.**
+- Sample Site: The identifier that indicates the location where the sample was collected. We can map this site to `sample_site` to get the accurate coordinate.
+- Sample Class: The classification of the sample. For example, “Compliance” indicates that these samples are collected as part of the regulatory monitoring program, while “Operational” help operators manage and maintain system performance, optimize treatment processes, and monitor system conditions. **Here we don't need such precise classification.**
+
+Water quality measurement:
+
+- Residual Free Chlorine (mg/L): Free chlorine is used to maintain a disinfectant residual throughout the distribution system.
+- Turbidity (NTU): Turbidity is a measure of water clarity. It indicates the amount of suspended particles in the water, which can impact both the appearance and the safety of the water.
+- Fluoride (mg/L): Fluoride is often added to public water supplies to help prevent tooth decay.
+- Coliform (Quanti-Tray) (MPN/100mL): Coliform bacteria are used as indicators of general water quality and sanitary conditions.
+- E.coli (Quanti-Tray) (MPN/100mL): Similar to the coliform count. E. coli is a specific fecal indicator; its presence typically signals fecal contamination, which is a significant health concern.
+
+```{r}
+names(water_quality)[6:10] <- c("Residual_Chlorine", "Turbidity", "Fluoride", "Coliform", "Ecoli")
+```
+
+## sample date
+
+```{r}
+water_quality <- water_quality %>% 
+  mutate(date = as.Date(Sample.Date, format = "%m/%d/%Y")) %>% 
+  mutate(year_month = format(date, "%Y-%m")) %>%
+  mutate(year = format(date, "%Y")) %>%
+  mutate(month = format(date, "%m")) 
+```
+
+```{r, class.source="fold-hide"}
+water_quality %>%
+  group_by(year, month) %>%
+  summarise(count = n()) %>%
+  ungroup() %>%
+  ggplot(aes(x = month, y = year, fill = count)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(title = "Heatmap of Year-Month Combination Count", x = "Month", y = "Year") +
+  theme_minimal()
+```
+
+We can find almost all the time we have the measurement, making it possible to do a time scale analysis.
+
+## sample site
+
+We first do the deduplication of the reference sample site file. (Sample Site 39550)
+
+```{r}
+names(sample_site)[c(1,3,4)] = c("Sample.Site","X","Y")
+sample_site <- sample_site %>% 
+  distinct(Sample.Site, .keep_all = TRUE)
+```
+
+We first map the provided coordinates to the data and remove the NA values.
+
+```{r}
+water_quality <- water_quality %>%
+  left_join(sample_site %>% 
+              select("Sample.Site", "X", "Y"), 
+            by = "Sample.Site")
+water_quality <- water_quality %>%
+  filter(!is.na(X) & !is.na(Y))
+```
+
+The provided sample coordinate seems to be encoded in `EPSG:2263` format. We first try to change this into the latitude and longitude based encoding `WGS84`(`EPSG:4326`) to make our visualization easier.
+
+```{r}
+water_quality <- st_as_sf(water_quality, coords = c("X", "Y"), crs = 2263)
+water_quality$geometry <- st_transform(water_quality$geometry, 4326)
+```
+
+From the changed geometry, we can find they are roughly consistent with the latitude and longitude of NYC, so we would expect the transformation is working.
+
+```{r}
+water_quality$geometry
+```
+
+We can try to visualize it on the map. Here we get the NYC neighborhood data from [official website](https://www.nyc.gov/content/planning/pages/resources/datasets/neighborhood-tabulation). The visualization also shows the coordinate mapping is satisfactory.
+
+```{r}
+neighborhoods <- st_read("../../data/raw_data/nynta2020_25a/nynta2020.shp") %>% st_transform(4326)
+neighborhoods
+```
+
+```{r, class.source="fold-hide"}
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(data = neighborhoods, color = "#444", weight = 1, label = ~NTAName) %>%
+  addCircleMarkers(data = water_quality$geometry, radius = 1, color = "red")
+```
+
+## Chlorine
+
+```{r}
+summary(water_quality$Residual_Chlorine)
+```
+
+```{r}
+water_quality <- water_quality %>%
+  filter(!is.na(Residual_Chlorine) & Residual_Chlorine >=0)
+```
+
+```{r, class.source="fold-hide"}
+water_quality %>%
+  ggplot(aes(x=Residual_Chlorine)) +
+  geom_histogram()
+```
+
+## Turbidity
+
+Extreme value: <0.10
+
+Here for easy analysis, we directly change these values to 0.10.
+
+```{r}
+water_quality <- water_quality %>%
+  mutate(Turbidity=gsub("[<>]", "", Turbidity)) %>%
+  mutate(Turbidity=as.numeric(Turbidity)) %>%
+  filter(!is.na(Turbidity) & Turbidity >= 0)
+```
+
+```{r, class.source="fold-hide"}
+water_quality %>%
+  ggplot(aes(x=Turbidity)) +
+  geom_histogram()
+```
+
+## Fluoride
+
+```{r}
+nrow(water_quality %>% filter(!is.na(Fluoride) & Fluoride != ""))
+```
+
+Since the NA value for Fluoride is too much and this variable is not very correlated with water quality, we can just discard it.
+
+## Coliform
+
+Extreme value: <1, >200.5
+
+```{r}
+water_quality <- water_quality %>%
+  mutate(Coliform=gsub("[<>]", "", Coliform)) %>%
+  mutate(Coliform=as.numeric(Coliform)) %>%
+  filter(!is.na(Coliform) & Coliform >= 0)
+```
+
+```{r, class.source="fold-hide"}
+water_quality %>%
+  ggplot(aes(x=Coliform)) +
+  geom_histogram()
+```
+
+## Ecoli
+
+Extreme value: <1
+
+```{r}
+water_quality <- water_quality %>%
+  mutate(Ecoli=gsub("[<>]", "", Ecoli)) %>%
+  mutate(Ecoli=as.numeric(Ecoli)) %>%
+  filter(!is.na(Ecoli) & Ecoli >= 0)
+```
+
+```{r, class.source="fold-hide"}
+water_quality %>%
+  ggplot(aes(x=Ecoli)) +
+  geom_histogram()
+```
+
+## Variant selection
+
+```{r}
+water_quality <- water_quality %>%
+  select(Sample.Number, year_month, year, month, Residual_Chlorine, Turbidity, Coliform, Ecoli, geometry)
+```
+
+```{r, eval=FALSE}
+saveRDS(water_quality, file = "../../data/water_quality.rds")
+saveRDS(neighborhoods, file = "../../data/neighbourhoods_shp.rds")
+```
+
+# Sample plot
+
+```{r}
+time <- "2024-05"
+variant <- "Residual_Chlorine"
+```
+
+## Geometric mapping
+
+We can change the time scale to see different patterns.
+
+```{r, class.source="fold-hide"}
+plot_data <- water_quality %>%
+  filter(as.character(year_month) == time) %>%
+  select(all_of(c(variant, "geometry"))) %>%
+  group_by(geometry) %>%
+  summarise(mean_value = mean(.data[[variant]], na.rm = TRUE))
+
+pal <- colorNumeric(palette = "YlOrRd", domain = plot_data[["mean_value"]])
+
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(data = neighborhoods, color = "#444", weight = 1, label = ~NTAName) %>%
+  addCircleMarkers(
+    data = plot_data,
+    radius = 5,
+    color = pal(plot_data[["mean_value"]]),
+    fillOpacity = 0.8,
+    stroke = FALSE,
+    popup = ~paste(variant, ": ", mean_value)
+  ) %>%
+  addLegend(
+    pal = pal,
+    values = plot_data[["mean_value"]],
+    title = variant,
+    position = "bottomright"
+  )
+```
+
+## Trend along time scale
+
+```{r}
+time_start <- ym("2023-01")
+time_end <- ym("2024-12")
+variant <- "Residual_Chlorine"
+neighbourhood <- "Harlem (South)"
+```
+
+
+```{r, class.source="fold-hide"}
+sub_neighbourhood <- neighborhoods %>%
+  filter(NTAName == neighbourhood)
+
+plot_data <- water_quality %>%
+  filter(ym(year_month) >= time_start & ym(year_month) <= time_end) %>%
+  select(all_of(c(variant, "geometry", "year_month"))) %>%
+  group_by(geometry, year_month) %>%
+  summarise(mean_value = mean(.data[[variant]], na.rm = TRUE)) %>%
+  ungroup()
+
+if (neighbourhood != "Whole NYC")
+  plot_data <- st_filter(plot_data, sub_neighbourhood)
+
+plot_data %>%
+  ggplot(aes(x=year_month, y=mean_value, group=1)) +
+  geom_smooth(method = "loess", se=TRUE) +
+  labs(
+        title = paste(variant, "change along time in", neighbourhood),
+        x = "Time",
+        y = variant
+    ) +
+    theme(
+        plot.title = element_text(face = "bold", size = 13),
+        axis.text.y = element_text(face = "bold"),
+        axis.text.x = element_text(face = "bold", angle = 45, hjust = 1),
+        axis.title.y = element_text(face = "bold"),
+        axis.title.x = element_text(face = "bold"),
+        panel.grid = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        axis.line = element_line(color = "black")
+    )
+```
+
+
+
+
