@@ -1,3 +1,9 @@
+## ignore big raw data file 
+# data/raw_data
+
+## ignore all cache files
+**/*_cache
+
 ## system level
 **/.vscode
 **/.DS_Store
