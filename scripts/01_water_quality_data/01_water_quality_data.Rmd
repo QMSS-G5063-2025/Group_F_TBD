@@ -165,10 +165,23 @@ water_quality <- water_quality %>%
   filter(!is.na(Turbidity) & Turbidity >= 0)
 ```
 
+```{r}
+water_quality %>%
+  filter(Turbidity > 1.5) %>%
+  nrow()
+```
+
+```{r}
+water_quality %>%
+  filter(Turbidity > 1.5) %>%
+  nrow() / nrow(water_quality)
+```
+
 ```{r, class.source="fold-hide"}
 water_quality %>%
+  filter(Turbidity <= 1.5) %>%
   ggplot(aes(x=Turbidity)) +
-  geom_histogram()
+  geom_histogram(binwidth = 0.1)
 ```
 
 ## Fluoride
@@ -190,6 +203,18 @@ water_quality <- water_quality %>%
   filter(!is.na(Coliform) & Coliform >= 0)
 ```
 
+```{r}
+water_quality %>%
+  filter(Coliform != 1) %>%
+  nrow()
+```
+
+```{r}
+water_quality %>%
+  filter(Coliform != 1) %>%
+  nrow() / nrow(water_quality)
+```
+
 ```{r, class.source="fold-hide"}
 water_quality %>%
   ggplot(aes(x=Coliform)) +
@@ -205,6 +230,18 @@ water_quality <- water_quality %>%
   mutate(Ecoli=gsub("[<>]", "", Ecoli)) %>%
   mutate(Ecoli=as.numeric(Ecoli)) %>%
   filter(!is.na(Ecoli) & Ecoli >= 0)
+```
+
+```{r}
+water_quality %>%
+  filter(Ecoli != 1) %>%
+  nrow()
+```
+
+```{r}
+water_quality %>%
+  filter(Ecoli != 1) %>%
+  nrow() / nrow(water_quality)
 ```
 
 ```{r, class.source="fold-hide"}
