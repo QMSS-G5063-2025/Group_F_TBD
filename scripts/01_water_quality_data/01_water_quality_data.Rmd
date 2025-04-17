@@ -253,13 +253,17 @@ water_quality %>%
 ## Variant selection
 
 ```{r}
+coordinates <- st_coordinates(water_quality)
 water_quality <- water_quality %>%
-  select(Sample.Number, year_month, year, month, Residual_Chlorine, Turbidity, Coliform, Ecoli, geometry)
+  mutate(longitude = coordinates[,1]) %>%
+  mutate(latitude = coordinates[,2])
+water_quality <- water_quality %>%
+  select(Sample.Number, year_month, year, month, Residual_Chlorine, Turbidity, longitude, latitude) %>%
+  st_drop_geometry()
 ```
 
 ```{r, eval=FALSE}
-saveRDS(water_quality, file = "../../data/water_quality.rds")
-saveRDS(neighborhoods, file = "../../data/neighbourhoods_shp.rds")
+write.csv(water_quality, "../../data/water_quality.csv", row.names = FALSE)
 ```
 
 # Sample plot
