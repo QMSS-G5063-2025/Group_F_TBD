@@ -124,7 +124,7 @@ water_quality$geometry
 We can try to visualize it on the map. Here we get the NYC neighborhood data from [official website](https://www.nyc.gov/content/planning/pages/resources/datasets/neighborhood-tabulation). The visualization also shows the coordinate mapping is satisfactory.
 
 ```{r}
-neighborhoods <- st_read("../../data/raw_data/nynta2020_25a/nynta2020.shp") %>% st_transform(4326)
+neighborhoods <- st_read("../../data/raw_data/nynta2010_25a/nynta2010.shp") %>% st_transform(4326)
 neighborhoods
 ```
 
@@ -133,6 +133,16 @@ leaflet() %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
   addPolygons(data = neighborhoods, color = "#444", weight = 1, label = ~NTAName) %>%
   addCircleMarkers(data = water_quality$geometry, radius = 1, color = "red")
+```
+
+### Assign neighbourhood info
+
+```{r}
+water_quality <- water_quality %>% st_join(
+  neighborhoods["NTAName"],
+  join = st_within
+) %>% 
+  rename(Neighbourhood = NTAName) 
 ```
 
 ## Chlorine
@@ -257,13 +267,13 @@ coordinates <- st_coordinates(water_quality)
 water_quality <- water_quality %>%
   mutate(longitude = coordinates[,1]) %>%
   mutate(latitude = coordinates[,2])
-water_quality <- water_quality %>%
-  select(Sample.Number, year_month, year, month, Residual_Chlorine, Turbidity, longitude, latitude) %>%
+water_quality_to_save <- water_quality %>%
+  select(Sample.Number, year_month, year, month, Residual_Chlorine, Turbidity, longitude, latitude, Neighbourhood) %>%
   st_drop_geometry()
 ```
 
 ```{r, eval=FALSE}
-write.csv(water_quality, "../../data/water_quality.csv", row.names = FALSE)
+write.csv(water_quality_to_save, "../../data/water_quality.csv", row.names = FALSE)
 ```
 
 # Sample plot
@@ -311,7 +321,7 @@ leaflet() %>%
 time_start <- ym("2023-01")
 time_end <- ym("2024-12")
 variant <- "Residual_Chlorine"
-neighbourhood <- "Harlem (South)"
+neighbourhood <- "Morningside Heights"
 ```
 
 
