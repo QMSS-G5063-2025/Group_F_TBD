@@ -1,8 +1,18 @@
 ---
 title: "Health Atlas Processing"
-output: html_document
+author: "Aziz Zafar"
 date: "2025-04-17"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+    code_folding: show
+    self_contained: True
 ---
+
+```{r setup, include=FALSE}
+## Global options
+knitr::opts_chunk$set(cache = TRUE, echo = TRUE, warning = FALSE, message = FALSE)
+```
 
 ```{r, results='hide', warning=FALSE, message = FALSE}
 library(dplyr)
@@ -19,10 +29,7 @@ library(leaflet)
 nta_health = read_excel("../../data/raw_data/nta-metadata.xlsx", sheet = 3)
 neighborhoods <- st_read("../../data/raw_data/nynta2010_25a/nynta2010.shp") %>% st_transform(4326)
 
-nta_health = nta_health %>% select(c("NTA_Name", "NTA_Code", "TotalPop", "Hispanic", "WhiteNonHisp", "BlackNonHisp",
-                        "AsianPI", "OtherRace", "Poverty", "PrematureMortality",
-                        "PretermBirths", "SMM", "HIV",
-                        "HepB", "HepC", "TB"))%>%
+nta_health = nta_health %>% select(c("NTA_Name", "NTA_Code", "TotalPop", "Hispanic", "WhiteNonHisp", "BlackNonHisp", "AsianPI", "OtherRace", "Poverty", "PrematureMortality", "PretermBirths", "SMM", "HIV", "HepB", "HepC", "TB"))%>%
   left_join(neighborhoods, by = c("NTA_Code" = "NTACode"))%>%
   st_as_sf()
 
@@ -30,10 +37,20 @@ nta_health = nta_health %>% select(c("NTA_Name", "NTA_Code", "TotalPop", "Hispan
 
 Sanity check. Empty spaces seem to be urban parks.
 ```{r}
-ggplot(nta_health)+
+ggplot(nta_health) +
   geom_sf(mapping= aes(fill = TotalPop))
-
-
-ggplot(nta_health)+geom_sf(mapping=aes(fill = HIV))
-
 ```
+
+```{r}
+ggplot(nta_health) +
+  geom_sf(mapping=aes(fill = HIV))
+```
+
+save data
+
+```{r, eval=FALSE}
+read_excel("../../data/raw_data/nta-metadata.xlsx", sheet = 3) %>% 
+  select(c("NTA_Name", "NTA_Code", "TotalPop", "Hispanic", "WhiteNonHisp", "BlackNonHisp", "AsianPI", "OtherRace", "Poverty", "PrematureMortality", "PretermBirths", "SMM", "HIV", "HepB", "HepC", "TB")) %>%
+  write.csv("../../data/nta_health_demographic.csv", row.names = FALSE)
+```
+
