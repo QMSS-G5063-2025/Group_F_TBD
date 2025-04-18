@@ -2,15 +2,15 @@
 
 ## Team Member
 
-- Aziz Zafar (az2798@cumc.columbia.edu)
-- Naufa Amirani (nfa2120@cumc.columbia.edu)
-- Di Liu (dl3738@cumc.columbia.edu)
+- Aziz Zafar (az2798)
+- Naufa Amirani (nfa2120)
+- Di Liu (dl3738)
 
 # Installation
 
 ## Publicly Available Website
 
-We host our website here.
+We host our website [here](https://groupftbd-bntxpudsxzmibfu3iayopw.streamlit.app/).
 
 ## Local Installation
 
