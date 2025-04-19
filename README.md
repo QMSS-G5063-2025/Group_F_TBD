@@ -10,11 +10,11 @@
 
 ## Publicly Available Website
 
-We host our website [here](https://groupftbd-bntxpudsxzmibfu3iayopw.streamlit.app/).
+We host our website [here](https://groupftbd-bntxpudsxzmibfu3iayopw.streamlit.app/) for your easy access.
 
 ## Local Installation
 
-To run the website on your local machine, please follow the instruction
+To run the website on your local machine **for better performance**, please follow the instruction
 
 1. Clone the repo, run
 
