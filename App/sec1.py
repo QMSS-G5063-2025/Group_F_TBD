@@ -4,7 +4,6 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 import pydeck as pdk
 import streamlit as st
@@ -20,29 +19,35 @@ sys.path.append(BASE_DIR)
 
 from utils.data import load_data, load_shapefile
 from utils.map import get_view_state
-from utils.utils import NAME_MAPPING, get_color_map
+from utils.utils import NAME_MAPPING, get_color_map, reset_view, select_subset
 
 DATA_BASE = BASE_DIR.parent / "data"
-
-# set styling of control components
-st.markdown(
-    """
-<style>
-div[data-baseweb="slider"] {
-    padding: 0 1rem;
-}
-div[data-baseweb="select"] {
-    min-width: 240px;
-}
-</style>
-""",
-    unsafe_allow_html=True,
-)
 
 
 def render_sec1():
     # title
     st.title("Water Quality Change over Time")
+
+    # set subset global
+    if "view_subset" not in st.session_state:
+        st.session_state.view_subset = False
+    if "selection_criteria" not in st.session_state:
+        st.session_state.selection_criteria = {}
+    if "active_view" not in st.session_state:
+        st.session_state.active_view = None
+    st.markdown(
+        """
+    <style>
+        div[data-testid="stButton"] > button[kind="secondary"]:disabled {
+            opacity: 1;
+            border-color: #f63366;
+            background-color: #ff4b4b;
+            color: white;
+        }
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
 
     ########################################
     # read in data
@@ -69,13 +74,13 @@ def render_sec1():
         st.markdown(
             "<p style='font-size:17px; font-weight:bold;'>Water Quality Monitoring Indicators</p>",
             unsafe_allow_html=True,
-        )
+        )  # use HTML to set font size and weight
         selected_param = st.radio(
             "Water Quality Monitoring Indicators",
             options=["Residual_Chlorine", "Turbidity"],
             format_func=lambda x: NAME_MAPPING[x],
             index=0,
-            label_visibility="collapsed",
+            label_visibility="collapsed",  # hide original label
         )
 
     with col2:
@@ -177,19 +182,52 @@ def render_sec1():
             unsafe_allow_html=True,
         )
         bin_count = st.slider(
-            "Choose Bin Counts", min_value=5, max_value=100, value=20, step=1, label_visibility="collapsed"
+            "Choose Bin Counts", min_value=5, max_value=100, value=50, step=1, label_visibility="collapsed"
         )
 
-        fig = px.histogram(
-            subset,
-            x=selected_param,
-            nbins=bin_count,
-            title=f"Histogram of {NAME_MAPPING[selected_param]}<br>in NYC at {selected_time}",
-            labels={selected_param: NAME_MAPPING[selected_param]},
-            opacity=0.75,
+        # create histogram
+        fig = go.Figure()
+        fig.add_trace(
+            go.Histogram(
+                x=subset[selected_param],
+                nbinsx=bin_count,
+                opacity=0.75,  # transparency
+                name=NAME_MAPPING[selected_param],  # legend name
+                hovertemplate=(f"{NAME_MAPPING[selected_param]}: %{{x}}<br>" "Count: %{y}<extra></extra>"),
+            )
         )
-        fig.update_layout(dragmode="select", selectdirection="h")
-        st.plotly_chart(fig, use_container_width=True)
+        fig.update_layout(
+            title=f"Histogram of {NAME_MAPPING[selected_param]}<br>in NYC at {selected_time}",
+            xaxis_title=NAME_MAPPING[selected_param],
+            dragmode="select",
+            clickmode="event+select",
+        )
+        event = st.plotly_chart(
+            fig,
+            use_container_width=True,
+            on_select="rerun",
+            selection_mode=("points", "box", "lasso"),
+            key="histogram",
+        )
+        if event and event.selection and event.selection.point_indices:
+            tmp = subset.iloc[event.selection.point_indices]
+            criteria = {
+                "year_month": tmp["year_month"].unique().tolist(),
+                selected_param: tmp[selected_param].unique().tolist(),
+            }
+            if criteria != st.session_state.selection_criteria:
+                st.session_state.selection_criteria = criteria
+            st.button(
+                "View in Raw Data",
+                key="view_hist",
+                on_click=select_subset,
+                kwargs={"method": "hist", "criteria": criteria},
+                disabled=(st.session_state.active_view == "hist"),
+                use_container_width=True,
+            )
+        else:
+            if st.session_state.active_view == "hist":
+                reset_view()
 
     with col2:
         # set slide bar
@@ -263,15 +301,47 @@ def render_sec1():
                 hoverinfo="text",
             )
         )
-        fig.add_trace(go.Scatter(x=x_smooth, y=y_smooth, mode="lines", name="LOWESS Fit"))
-
+        fig.add_trace(
+            go.Scatter(
+                x=x_smooth,
+                y=y_smooth,
+                mode="lines",
+                name="LOWESS Fit",
+            )
+        )
         fig.update_layout(
             title=f"{NAME_MAPPING[selected_param]} Change <br>from {slide_bar_min} to {slide_bar_max} in {selected_area}",
             xaxis=dict(tickmode="array", tickvals=tick_vals, ticktext=tick_text),
             yaxis_title=NAME_MAPPING[selected_param],
+            dragmode="select",
+            clickmode="event+select",
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        event = st.plotly_chart(
+            fig,
+            use_container_width=True,
+            on_select="rerun",
+            selection_mode=("points", "box", "lasso"),
+            key="change_over_time",
+        )
+        if event and event.selection and event.selection.point_indices:
+            criteria = {
+                "year_month": df_grouped.iloc[event.selection.point_indices]["year_month"].unique().tolist(),
+                "Neighbourhood": ([selected_area] if selected_area != "Whole NYC" else NEIGHBOUR_NAME),
+            }
+            if criteria != st.session_state.selection_criteria:
+                st.session_state.selection_criteria = criteria
+            st.button(
+                "View in Raw Data",
+                key="view_trend",
+                on_click=select_subset,
+                kwargs={"method": "trend", "criteria": criteria},
+                disabled=(st.session_state.active_view == "trend"),
+                use_container_width=True,
+            )
+        else:
+            if st.session_state.active_view == "trend":
+                reset_view()
 
     ########################################
     # Preview raw data
@@ -279,31 +349,40 @@ def render_sec1():
     st.subheader("Explore Raw Data")
 
     columns_to_display = ["Sample.Number", "year_month", "Residual_Chlorine", "Turbidity", "Neighbourhood"]
-    df = water_quality[columns_to_display].copy()
-    df.rename(columns=NAME_MAPPING, inplace=True)
+
+    if st.session_state.view_subset:
+        st.button(
+            "View all data",
+            key="view_all",
+            on_click=reset_view,
+            disabled=not st.session_state.view_subset,
+        )
+
+    display_df = water_quality[columns_to_display].copy()
+    if st.session_state.view_subset:
+        for col, vals in st.session_state.selection_criteria.items():
+            display_df = display_df[display_df[col].isin(vals)]
+
+    display_df.rename(columns={k: v for k, v in NAME_MAPPING.items() if k in df.columns}, inplace=True)
 
     # build grid options
-    gb = GridOptionsBuilder.from_dataframe(df)
+    gb = GridOptionsBuilder.from_dataframe(display_df)
     gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=15)
     gb.configure_default_column(
         filter=True,
         sortable=True,
         cellStyle={"textAlign": "center"},
-        headerClass="centered-header",
         wrapHeaderText=True,
         autoHeaderHeight=True,
     )
-    grid_options = gb.build()
-    st.markdown(
-        """
-        <style>
-            .centered-header .ag-header-cell-label {
-                justify-content: center !important;
-                white-space: normal !important;
-            }
-        </style>
-    """,
-        unsafe_allow_html=True,
-    )
+    # we need to explicitly set the header class to normalize the header position
+    for col in display_df.columns:
+        gb.configure_column(col, headerClass="centered-header")
 
-    AgGrid(df, gridOptions=grid_options, height=400, fit_columns_on_grid_load=True)
+    grid_options = gb.build()
+
+    AgGrid(display_df, gridOptions=grid_options, height=400, fit_columns_on_grid_load=True)
+
+    if st.session_state.view_subset:
+        with st.expander("View Current Selection Criteria", expanded=False):
+            st.write({k: list(v) for k, v in st.session_state.selection_criteria.items()})

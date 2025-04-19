@@ -1,13 +1,14 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import streamlit as st
 from matplotlib.colors import to_hex
+from streamlit.components.v1 import html
 
 NAME_MAPPING = {
     "Residual_Chlorine": "Residual Chlorine Content (mg/L)",
     "Turbidity": "Turbidity (NTU)",
     "year_month": "Sample Time",
     "Sample.Number": "Sample ID",
-    "Neighbourhood": "Neighbourhood",
 }
 
 
@@ -45,3 +46,17 @@ def get_color_map(vals, selected_param, cmap="OrRd", n_stops=5):
     """
 
     return colors, html
+
+
+def select_subset(method, criteria):
+    st.session_state.view_subset = True
+    st.session_state.selection_criteria = criteria
+    st.session_state.active_view = method
+
+
+def reset_view():
+    st.session_state.view_subset = False
+    st.session_state.selection_criteria = {}
+    st.session_state.active_view = None
+
+
