@@ -5,6 +5,9 @@ from matplotlib.colors import to_hex
 NAME_MAPPING = {
     "Residual_Chlorine": "Residual Chlorine Content (mg/L)",
     "Turbidity": "Turbidity (NTU)",
+    "year_month": "Sample Time",
+    "Sample.Number": "Sample ID",
+    "Neighbourhood": "Neighbourhood",
 }
 
 

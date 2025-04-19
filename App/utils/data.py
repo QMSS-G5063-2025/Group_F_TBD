@@ -14,7 +14,7 @@ def load_data(data_path):
             st.error(f"File not found: {data_path.absolute()}")
             return None
 
-        data = pd.read_csv(data_path, index_col=0)
+        data = pd.read_csv(data_path)
 
         return data
 
@@ -33,10 +33,10 @@ def load_shapefile(data_path):
 
         data = gpd.read_file(data_path)
         data = data.to_crs(epsg=4326)
-        # data["coordinates"] = data.geometry.apply(
-        #     lambda geom: [np.array(poly.exterior.coords).tolist() for poly in geom.geoms]
-        # )
-
+        data["tooltip"] = data["NTAName"].apply(
+            lambda name: f"<b>Neighbourhood:</b> {name}<br/>"
+        )
+        
         return data
 
     except Exception as e:

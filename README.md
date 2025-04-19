@@ -32,7 +32,7 @@ pip install -r requirements.txt
 or manually install the required packages
 
 ```bash
-pip install streamlit==1.44.1 plotly==6.0.1 geopandas==1.0.1 matplotlib==3.10.1
+pip install streamlit==1.44.1 plotly==6.0.1 geopandas==1.0.1 matplotlib==3.10.1 streamlit-aggrid==1.1.3 statsmodels==0.14.4
 ```
 
 Note that the website is tested under `python 3.11.12`.

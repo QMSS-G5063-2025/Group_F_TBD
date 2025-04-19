@@ -25,6 +25,8 @@ def render_home():
     - Neighboorhhod Health Data
 
     We get the raw neighboorhhod health data from [NYC Health Atlas](https://public.tableau.com/app/profile/nyc.health/viz/NewYorkCityNeighborhoodHealthAtlas/Home). For detailed data curation, please refer to our [GitHub](https://github.com/QMSS-G5063-2025/Group_F_TBD/tree/main/scripts/02_health_atlas). We follow the neighboorhhod definition of [2010 NYC City Planning](https://www.nyc.gov/content/planning/pages/resources/datasets/neighborhood-tabulation).
+
+    **You can download our curated data from our [GitHub](https://github.com/QMSS-G5063-2025/Group_F_TBD/tree/main/data)**
     """
     )
 
