@@ -1,13 +1,35 @@
-import streamlit as st
-import pandas as pd
+import sys
 from pathlib import Path
 
-current_dir = Path(__file__).parent
-data_dir = current_dir.parent / "data"
+import streamlit as st
 
+########################################
+# global setting
+########################################
+st.set_page_config(layout="wide")
 
-water_quality = pd.read_csv(data_dir / "water_quality.csv", index_col=0)
-demographic = pd.read_csv(data_dir / "nta_health_demographic.csv")
+if "current_section" not in st.session_state:
+    st.session_state.current_section = "Home"
 
-st.write("Simple visualize the dataframe")
-st.dataframe(water_quality)
+# load local modules
+BASE_DIR = Path(__file__).parent
+sys.path.append(BASE_DIR)
+
+from home import render_home
+from sec1 import render_sec1
+
+########################################
+# layout
+########################################
+with st.sidebar:
+    st.title("Explorer")
+    sections = {"Home": "🏠", "Water Quality Change over Time": "📈", "Section2": "📊", "Section3": "📋"}
+
+    for section, icon in sections.items():
+        if st.button(f"{icon} {section}"):
+            st.session_state.current_section = section
+
+if st.session_state.current_section == "Home":
+    render_home()
+elif st.session_state.current_section == "Water Quality Change over Time":
+    render_sec1()
