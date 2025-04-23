@@ -9,6 +9,7 @@ import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder
 from statsmodels.nonparametric.smoothers_lowess import lowess
 from matplotlib.colors import TwoSlopeNorm, to_hex
+import numpy as np
 
 ########################################
 # global setting
@@ -57,7 +58,7 @@ def render_sec3():
     # ***** CHANGED: START Preprocessing *****
     
     neighbourhood = load_shapefile(DATA_BASE / "raw_data/nynta2010_25a/nynta2010.shp")
-    nta_health_demo = load_data(DATA_BASE / "nta_health_demographic.csv")
+    nta_health_demo = load_data(DATA_BASE / "nta_health_demographic_NAUFA.csv")
     # Get sets of neighborhood names from both datasets
     neighborhoods_in_health = set(nta_health_demo["NTA_Name"].unique())
     neighborhoods_in_water = set(water_quality["Neighbourhood"].unique())
