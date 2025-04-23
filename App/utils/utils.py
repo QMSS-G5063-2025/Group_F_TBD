@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
-from matplotlib.colors import to_hex
+from matplotlib.colors import TwoSlopeNorm, to_hex
 
 NAME_MAPPING = {
     "Residual_Chlorine": "Residual Chlorine Content (mg/L)",
@@ -17,10 +17,19 @@ COLOR_BAR_SETTING = {
 
 
 def get_color_map(
-    vals, selected_param, cmap="OrRd", n_stops=5, min_clip=None, max_clip=None, log_scale_mapping=False
+    vals,
+    selected_param,
+    cmap="OrRd",
+    n_stops=5,
+    min_clip=None,
+    max_clip=None,
+    median=None,
+    log_scale_mapping=False,
+    force_median=True
 ):
     raw_min = vals.min()
     raw_max = vals.max()
+    raw_median = np.median(vals)
 
     max_label = f"≥ {max_clip:.2f}" if not max_clip is None else f"{raw_max:.2f}"
     min_label = f"{min_clip:.2f} ≤" if not min_clip is None else f"{raw_min:.2f}"
@@ -30,18 +39,25 @@ def get_color_map(
         max_clip = raw_max
     if min_clip is None:
         min_clip = raw_min
+    if median is None:
+        median = raw_median
 
     if log_scale_mapping:
         mapped = np.log(vals)
         clip_min_mapped = np.log(min_clip)
         clip_max_mapped = np.log(max_clip)
+        median_mapped = np.log(median)
     else:
         mapped = vals.copy()
         clip_min_mapped = min_clip
         clip_max_mapped = max_clip
+        median_mapped = median
 
     clipped = np.clip(mapped, clip_min_mapped, clip_max_mapped)
-    norm = plt.Normalize(vmin=clip_min_mapped, vmax=clip_max_mapped)
+    if force_median:
+        norm = TwoSlopeNorm(vmin=clip_min_mapped, vcenter=median_mapped, vmax=clip_max_mapped)
+    else:
+        norm = plt.Normalize(vmin=clip_min_mapped, vmax=clip_max_mapped)
 
     cmap = plt.get_cmap(cmap)
     colors = (cmap(norm(clipped)) * 255).astype(int)
