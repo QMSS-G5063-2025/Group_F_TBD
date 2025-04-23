@@ -10,6 +10,14 @@ NAME_MAPPING = {
     "Sample.Number": "Sample ID",
 }
 
+HEALTH_MAPPING = {"PrematureMortality": "Premature Mortality (Rate/100,000)",
+                 "PretermBirths": "Preterm Births (Rate/100,000)",
+                "SMM": "Severe Maternal Morbidity (Rate/100,000)",
+                "HIV": "Human Immunodeficiency Virus (HIV) Diagnoses (Rate/100,000)",
+                "HepB": "Chronic Hepatitis B (Rate/100,000)",
+                "HepC": "Chronic Hepatitis C (Rate/100,000)",
+                "TB": "Tuberculosis Cases (Rate/100,000)"}
+
 COLOR_BAR_SETTING = {
     "Residual_Chlorine": {"cmap": "bwr", "min_clip": None, "max_clip": None, "log_scale_mapping": False},
     "Turbidity": {"cmap": "bwr", "min_clip": 0.1, "max_clip": 1.5, "log_scale_mapping": False},
