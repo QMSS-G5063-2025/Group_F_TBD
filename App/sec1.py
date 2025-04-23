@@ -53,6 +53,7 @@ def render_sec1():
     # read in data
     ########################################
     water_quality = load_data(DATA_BASE / "water_quality.csv")
+    water_quality = water_quality.groupby(['year_month', 'year', 'month', 'longitude', 'latitude', 'Neighbourhood'], as_index=False)[['Residual_Chlorine', 'Turbidity']].mean()
     neighbourhood = load_shapefile(DATA_BASE / "raw_data/nynta2010_25a/nynta2010.shp")
     MONTH = [
         f"{year}-{month:02d}"
@@ -107,10 +108,14 @@ def render_sec1():
         )
 
     subset = water_quality.loc[water_quality["year_month"] == selected_time].copy()
-    rgba_colors, colorbar_html = get_color_map(subset[selected_param], NAME_MAPPING[selected_param])
+    if selected_param == "Residual_Chlorine":
+        max_clip = None
+    elif selected_param == "Turbidity":
+        max_clip = 1.2
+    rgba_colors, colorbar_html = get_color_map(subset[selected_param], NAME_MAPPING[selected_param], cmap="bwr", max_clip=max_clip)
     subset["color"] = rgba_colors.tolist()
     subset["tooltip"] = subset.apply(
-        lambda row: f"<b>Sample ID:</b> {row['Sample.Number']}<br/><b>{NAME_MAPPING[selected_param]}:</b> {row[selected_param]}<br/><b>Neighbourhood:</b> {row['Neighbourhood']}<br/><b>Sample Time:</b> {selected_time}",
+        lambda row: f"<b>Neighbourhood:</b> {row['Neighbourhood']}<br/><b>Sample Time:</b> {selected_time}<br/><b>{NAME_MAPPING[selected_param]}:</b> {row[selected_param]:.2f}",
         axis=1,
     )
 
@@ -348,7 +353,7 @@ def render_sec1():
     ########################################
     st.subheader("Explore Raw Data")
 
-    columns_to_display = ["Sample.Number", "year_month", "Residual_Chlorine", "Turbidity", "Neighbourhood"]
+    columns_to_display = ["year_month", "Residual_Chlorine", "Turbidity", "Neighbourhood"]
 
     if st.session_state.view_subset:
         st.button(
