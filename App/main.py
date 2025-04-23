@@ -18,13 +18,14 @@ sys.path.append(BASE_DIR)
 from home import render_home
 from sec1 import render_sec1
 from sec2 import render_sec2
+from sec3 import render_sec3
 
 ########################################
 # layout
 ########################################
 with st.sidebar:
     st.title("Explorer")
-    sections = {"Home": "🏠", "Water Quality Change over Time": "📈", "Water Quality and Health": "📊", "Section3": "📋"}
+    sections = {"Home": "🏠", "Water Quality Change over Time": "📈", "Water Quality and Health": "📊", "Water Quality and Demographics": "📋"}
 
     for section, icon in sections.items():
         if st.button(f"{icon} {section}"):
@@ -36,3 +37,5 @@ elif st.session_state.current_section == "Water Quality Change over Time":
     render_sec1()
 elif st.session_state.current_section == "Water Quality and Health":
     render_sec2()
+elif st.session_state.current_section == "Water Quality and Demographics":
+    render_sec3()
