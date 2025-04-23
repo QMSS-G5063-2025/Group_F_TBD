@@ -20,7 +20,7 @@ sys.path.append(BASE_DIR)
 
 from utils.data import load_data, load_shapefile
 from utils.map import get_view_state
-from utils.utils import NAME_MAPPING, HEALTH_MAPPING, get_color_map, reset_view, select_subset
+from utils.utils import NAME_MAPPING, HEALTH_MAPPING, COLOR_BAR_SETTING, COLOR_BAR_HEALTH, get_color_map, reset_view, select_subset
 
 DATA_BASE = BASE_DIR.parent / "data"
 
@@ -55,26 +55,27 @@ def render_sec2():
     ########################################
     water_quality = load_data(DATA_BASE / "water_quality.csv")
     nta_health = load_data(DATA_BASE / "nta_health_demographic.csv")
+    nta_health.drop(columns=["HIV"])
     neighbourhood = load_shapefile(DATA_BASE / "raw_data/nynta2010_25a/nynta2010.shp")
 
     print(neighbourhood.head())
     neighborhood_health_merged = pd.merge(left= nta_health, right= neighbourhood,
                                           left_on="NTA_Code", right_on= "NTACode",
                                           how = "left")
-    
+    neighborhood_health_merged.dropna(inplace=True)
     NEIGHBOUR_NAME = ["Whole NYC"] + sorted(water_quality["Neighbourhood"].unique().tolist())
 
+    
 
     water_quality = water_quality[water_quality["year"]==2015]
     water_quality = (
     water_quality
-    .groupby("Sample.Number")
-    .agg({col: "mean" if pd.api.types.is_numeric_dtype(dtype) else "first"
-          for col, dtype in water_quality.dtypes.items() if col!="Sample.Number"})
-    .reset_index()
+    .groupby(["longitude", "latitude","Neighbourhood"], as_index=False)[["Residual_Chlorine", "Turbidity"]].mean()
     )
 
-    
+    water_quality_neighborhood= water_quality.groupby("Neighbourhood",as_index=False)[["Residual_Chlorine", "Turbidity"]].mean()
+    water_quality_neighborhood = pd.merge(water_quality_neighborhood, neighborhood_health_merged,
+                                          left_on = "Neighbourhood", right_on= "NTA_Name")
     ########################################
     # plot map
     ########################################
@@ -102,10 +103,10 @@ def render_sec2():
             "<p style='font-size:17px; font-weight:bold;'>Health Outcomes</p>",
             unsafe_allow_html=True,
         )
-        selected_param_health = st.radio(
+        selected_param_health = st.selectbox(
             "Health Outcomes",
             options=["PrematureMortality", "PretermBirths", "SMM",
-                     "HIV", "HepB", "HepC", "TB"],
+                      "HepB", "HepC", "TB"],
             format_func=lambda x: HEALTH_MAPPING[x],
             index=0,
             label_visibility="collapsed",  
@@ -125,17 +126,17 @@ def render_sec2():
         )
 
     subset_quality = water_quality.copy()
-    rgba_colors, colorbar_html = get_color_map(subset_quality[selected_param_water], NAME_MAPPING[selected_param_water])
+    rgba_colors, colorbar_html = get_color_map(subset_quality[selected_param_water], NAME_MAPPING[selected_param_water], **COLOR_BAR_SETTING[selected_param_water])
     subset_quality["quality_color"] = rgba_colors.tolist()
     subset_quality["tooltip"] = subset_quality.apply(
-        lambda row: f"<b>Sample ID:</b> {row['Sample.Number']}<br/><b>{NAME_MAPPING[selected_param_water]}:</b> {row[selected_param_water]}<br/><b>Neighbourhood:</b> {row['Neighbourhood']}",
+        lambda row: f"<b>{NAME_MAPPING[selected_param_water]}:</b> {row[selected_param_water]:.2f}<br/><b>Neighbourhood:</b> {row['Neighbourhood']}",
         axis=1,
     )
 
 
     subset_health = neighborhood_health_merged.copy()
-    rgba_health, colorbar_health = get_color_map(subset_health[selected_param_health], HEALTH_MAPPING[selected_param_health], cmap = "Blues")
-    rgba_health = (rgba_health * 255).astype(int)
+    rgba_health, colorbar_health = get_color_map(subset_health[selected_param_health], HEALTH_MAPPING[selected_param_health], **COLOR_BAR_HEALTH[selected_param_health])
+
 
     subset_health["health_color"]= rgba_health.tolist()
     subset_health["tooltip"] = subset_health.apply(
@@ -259,67 +260,50 @@ def render_sec2():
 
     with col2:
         ## LOWESS smoothing
-        
-        lowess_frac = 0.2  # adjust smoothing fraction as needed
+        y= water_quality_neighborhood[selected_param_health]
+        x=water_quality_neighborhood[selected_param_water]
+        lowess_frac = 0.5  # adjust smoothing fraction as needed
         smoothed = lowess(y, x, frac=lowess_frac, return_sorted=True)
-        x_smooth_ord = smoothed[:, 0]
+        x_smooth = smoothed[:, 0]
         y_smooth = smoothed[:, 1]
-        x_smooth = [datetime.fromordinal(int(xi)) for xi in x_smooth_ord]
 
-    #     # Create ticks for x-axis
-    #     start_date = datetime.strptime(slide_bar_min, "%Y-%m")
-    #     end_date = datetime.strptime(slide_bar_max, "%Y-%m")
-    #     ticks = pd.date_range(start_date, end_date, periods=6)
-    #     tick_vals = list(ticks)
-    #     tick_text = [dt.strftime("%Y-%m") for dt in ticks]
 
-    #     # create hover text
-    #     df_grouped = df.groupby("year_month")[selected_param].mean().reset_index()
-    #     hover_text = df_grouped.apply(
-    #         lambda row: (
-    #             f"Sample Time: {row['year_month']}<br>"
-    #             f"Neighbourhood: {selected_area}<br>"
-    #             f"Mean {NAME_MAPPING[selected_param]}: {row[selected_param]:.2f}"
-    #         ),
-    #         axis=1,
-    #     )
+        # Create figure
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=y,
+                mode="markers",
+                name="Real Measure",
+                marker=dict(color="lightblue", size=8),
+                hoverinfo="text"
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x_smooth,
+                y=y_smooth,
+                mode="lines",
+                name="LOWESS Fit"
 
-    #     # Create figure
-    #     fig = go.Figure()
-    #     fig.add_trace(
-    #         go.Scatter(
-    #             x=df_grouped["year_month"],
-    #             y=df_grouped[selected_param],
-    #             mode="markers",
-    #             name="Real Measure",
-    #             marker=dict(color="royalblue", size=8),
-    #             hovertext=hover_text,
-    #             hoverinfo="text",
-    #         )
-    #     )
-    #     fig.add_trace(
-    #         go.Scatter(
-    #             x=x_smooth,
-    #             y=y_smooth,
-    #             mode="lines",
-    #             name="LOWESS Fit",
-    #         )
-    #     )
-    #     fig.update_layout(
-    #         title=f"{NAME_MAPPING[selected_param]} Change <br>from {slide_bar_min} to {slide_bar_max} in {selected_area}",
-    #         xaxis=dict(tickmode="array", tickvals=tick_vals, ticktext=tick_text),
-    #         yaxis_title=NAME_MAPPING[selected_param],
-    #         dragmode="select",
-    #         clickmode="event+select",
-    #     )
+            )
+        )
+        fig.update_layout(
+            title=f"{HEALTH_MAPPING[selected_param_health]} with respect to {NAME_MAPPING[selected_param_water]}",
+            yaxis_title=HEALTH_MAPPING[selected_param_health],
+            xaxis_title = NAME_MAPPING[selected_param_water],
+            dragmode="select",
+            clickmode="event+select",
+        )
 
-    #     event = st.plotly_chart(
-    #         fig,
-    #         use_container_width=True,
-    #         on_select="rerun",
-    #         selection_mode=("points", "box", "lasso"),
-    #         key="change_over_time",
-    #     )
+        event = st.plotly_chart(
+            fig,
+            use_container_width=True,
+            on_select="rerun",
+            selection_mode=("points", "box", "lasso"),
+            key="change_over_time",
+        )
     #     if event and event.selection and event.selection.point_indices:
     #         criteria = {
     #             "year_month": df_grouped.iloc[event.selection.point_indices]["year_month"].unique().tolist(),
