@@ -3,6 +3,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import pydeck as pdk
@@ -19,7 +20,7 @@ sys.path.append(BASE_DIR)
 
 from utils.data import load_data, load_shapefile
 from utils.map import get_view_state
-from utils.utils import NAME_MAPPING, get_color_map, reset_view, select_subset
+from utils.utils import COLOR_BAR_SETTING, NAME_MAPPING, get_color_map, reset_view, select_subset
 
 DATA_BASE = BASE_DIR.parent / "data"
 
@@ -53,7 +54,9 @@ def render_sec1():
     # read in data
     ########################################
     water_quality = load_data(DATA_BASE / "water_quality.csv")
-    water_quality = water_quality.groupby(['year_month', 'year', 'month', 'longitude', 'latitude', 'Neighbourhood'], as_index=False)[['Residual_Chlorine', 'Turbidity']].mean()
+    water_quality = water_quality.groupby(
+        ["year_month", "year", "month", "longitude", "latitude", "Neighbourhood"], as_index=False
+    )[["Residual_Chlorine", "Turbidity"]].mean()
     neighbourhood = load_shapefile(DATA_BASE / "raw_data/nynta2010_25a/nynta2010.shp")
     MONTH = [
         f"{year}-{month:02d}"
@@ -108,11 +111,10 @@ def render_sec1():
         )
 
     subset = water_quality.loc[water_quality["year_month"] == selected_time].copy()
-    if selected_param == "Residual_Chlorine":
-        max_clip = None
-    elif selected_param == "Turbidity":
-        max_clip = 1.2
-    rgba_colors, colorbar_html = get_color_map(subset[selected_param], NAME_MAPPING[selected_param], cmap="bwr", max_clip=max_clip)
+
+    rgba_colors, colorbar_html = get_color_map(
+        subset[selected_param], NAME_MAPPING[selected_param], **COLOR_BAR_SETTING[selected_param]
+    )
     subset["color"] = rgba_colors.tolist()
     subset["tooltip"] = subset.apply(
         lambda row: f"<b>Neighbourhood:</b> {row['Neighbourhood']}<br/><b>Sample Time:</b> {selected_time}<br/><b>{NAME_MAPPING[selected_param]}:</b> {row[selected_param]:.2f}",
@@ -190,23 +192,45 @@ def render_sec1():
             "Choose Bin Counts", min_value=5, max_value=100, value=50, step=1, label_visibility="collapsed"
         )
 
+        df = subset.groupby("Neighbourhood", as_index=False)[selected_param].mean()
         # create histogram
         fig = go.Figure()
         fig.add_trace(
             go.Histogram(
-                x=subset[selected_param],
+                x=df[selected_param],
                 nbinsx=bin_count,
                 opacity=0.75,  # transparency
-                name=NAME_MAPPING[selected_param],  # legend name
+                name=None,  # legend name
                 hovertemplate=(f"{NAME_MAPPING[selected_param]}: %{{x}}<br>" "Count: %{y}<extra></extra>"),
             )
         )
+
+        if selected_area != "Whole NYC":
+            x = df.loc[df["Neighbourhood"] == selected_area, selected_param]
+            x_val = float(x.iloc[0])
+            fig.add_vline(
+                x=x_val,
+                line=dict(color="red", width=2, dash="dash"),
+                annotation_text=f"{selected_area}<br>{NAME_MAPPING[selected_param]}: {x_val:.2f}",
+                annotation_position="top",
+                annotation=dict(
+                    font=dict(color="white", size=12, family="Arial Black"), 
+                    bgcolor="rgba(0, 0, 0, 0.7)",
+                    bordercolor="black", 
+                    borderwidth=2,  
+                    borderpad=4,  
+                    align="center", 
+                ),
+            )
+
         fig.update_layout(
-            title=f"Histogram of {NAME_MAPPING[selected_param]}<br>in NYC at {selected_time}",
+            title=f"Histogram of {NAME_MAPPING[selected_param]} in NYC at {selected_time}",
             xaxis_title=NAME_MAPPING[selected_param],
             dragmode="select",
             clickmode="event+select",
+            showlegend=False
         )
+
         event = st.plotly_chart(
             fig,
             use_container_width=True,
@@ -215,10 +239,9 @@ def render_sec1():
             key="histogram",
         )
         if event and event.selection and event.selection.point_indices:
-            tmp = subset.iloc[event.selection.point_indices]
             criteria = {
-                "year_month": tmp["year_month"].unique().tolist(),
-                selected_param: tmp[selected_param].unique().tolist(),
+                "year_month": [selected_time],
+                "Neighbourhood": df.iloc[event.selection.point_indices]["Neighbourhood"].unique().tolist(),
             }
             if criteria != st.session_state.selection_criteria:
                 st.session_state.selection_criteria = criteria
@@ -315,7 +338,7 @@ def render_sec1():
             )
         )
         fig.update_layout(
-            title=f"{NAME_MAPPING[selected_param]} Change <br>from {slide_bar_min} to {slide_bar_max} in {selected_area}",
+            title=f"{NAME_MAPPING[selected_param]} Change from {slide_bar_min} to {slide_bar_max}<br>in {selected_area}",
             xaxis=dict(tickmode="array", tickvals=tick_vals, ticktext=tick_text),
             yaxis_title=NAME_MAPPING[selected_param],
             dragmode="select",
