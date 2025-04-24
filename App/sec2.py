@@ -58,7 +58,6 @@ def render_sec2():
     nta_health.drop(columns=["HIV"])
     neighbourhood = load_shapefile(DATA_BASE / "raw_data/nynta2010_25a/nynta2010.shp")
 
-    print(neighbourhood.head())
     neighborhood_health_merged = pd.merge(left= nta_health, right= neighbourhood,
                                           left_on="NTA_Code", right_on= "NTACode",
                                           how = "left")
@@ -73,9 +72,11 @@ def render_sec2():
     .groupby(["longitude", "latitude","Neighbourhood"], as_index=False)[["Residual_Chlorine", "Turbidity"]].mean()
     )
 
-    water_quality_neighborhood= water_quality.groupby("Neighbourhood",as_index=False)[["Residual_Chlorine", "Turbidity"]].mean()
-    water_quality_neighborhood = pd.merge(water_quality_neighborhood, neighborhood_health_merged,
+    #water_quality_neighborhood= water_quality.groupby("Neighbourhood",as_index=False)[["Residual_Chlorine", "Turbidity"]].mean()
+    water_quality_neighborhood = pd.merge(water_quality, neighborhood_health_merged,
                                           left_on = "Neighbourhood", right_on= "NTA_Name")
+    
+    water_quality_neighborhood["geometry"] = water_quality_neighborhood["geometry"].apply(mapping)
     ########################################
     # plot map
     ########################################
@@ -125,45 +126,40 @@ def render_sec2():
             label_visibility="collapsed",
         )
 
-    subset_quality = water_quality.copy()
-    rgba_colors, colorbar_html = get_color_map(subset_quality[selected_param_water], NAME_MAPPING[selected_param_water], **COLOR_BAR_SETTING[selected_param_water])
-    subset_quality["quality_color"] = rgba_colors.tolist()
-    subset_quality["tooltip"] = subset_quality.apply(
+    subset = water_quality_neighborhood.copy()
+    rgba_colors, colorbar_html = get_color_map(subset[selected_param_water], NAME_MAPPING[selected_param_water], **COLOR_BAR_SETTING[selected_param_water])
+    subset["quality_color"] = rgba_colors.tolist()
+    subset["tooltip"] = subset.apply(
         lambda row: f"<b>{NAME_MAPPING[selected_param_water]}:</b> {row[selected_param_water]:.2f}<br/><b>Neighbourhood:</b> {row['Neighbourhood']}",
         axis=1,
     )
 
-
-    subset_health = neighborhood_health_merged.copy()
-    rgba_health, colorbar_health = get_color_map(subset_health[selected_param_health], HEALTH_MAPPING[selected_param_health], **COLOR_BAR_HEALTH[selected_param_health])
+    rgba_health, colorbar_health = get_color_map(subset[selected_param_health], HEALTH_MAPPING[selected_param_health], **COLOR_BAR_HEALTH[selected_param_health])
 
 
-    subset_health["health_color"]= rgba_health.tolist()
-    subset_health["tooltip"] = subset_health.apply(
+    subset["health_color"]= rgba_health.tolist()
+    subset["tooltip_health"] = subset.apply(
         lambda row: f"<b>{HEALTH_MAPPING[selected_param_health]}:</b> {row[selected_param_health]}<br/><b>Neighbourhood:</b> {row['NTA_Name']}",
         axis=1,
     )
-    subset_health = subset_health[subset_health.geometry.notnull()]
+    subset = subset[subset.geometry.notnull()]
 
 
     # map layer
     ## help zoom in to interested area
     
     #manual creation of json to avoid recursion limits being reached
+    view_state = get_view_state(neighbourhood, selected_area)
     neighbourhood_json = {
     "type": "FeatureCollection", "features": [
         {"type": "Feature",
-            "geometry": mapping(row.geometry),
+            "geometry": row["geometry"],
             "properties": {
                 "health_color": row["health_color"],
-                "tooltip": row["tooltip"],
-            }
+                "tooltip": row["tooltip_health"]}
         }
-        for _, row in subset_health.iterrows()
+        for _, row in subset.iterrows()
     ]}
-
-    view_state = get_view_state(neighbourhood_json, selected_area)
-
     # polygon layer
     polygon_layer = pdk.Layer(
         "GeoJsonLayer",
@@ -186,7 +182,7 @@ def render_sec2():
     # point layer
     point_layer = pdk.Layer(
         "ScatterplotLayer",
-        data=subset_quality,
+        data=subset,
         get_position=["longitude", "latitude"],
         get_radius=150,
         get_fill_color="quality_color",
@@ -199,13 +195,13 @@ def render_sec2():
         layers=[polygon_layer, point_layer],
         initial_view_state=view_state,
         tooltip={
-            "html": "{tooltip}",
-            "style": {
-                "backgroundColor": "rgba(50, 50, 50, 0.9)",
-                "color": "white",
-                "fontFamily": "Arial",
-                "padding": "10px",
-            },
+        "html": "{tooltip}",
+        "style": {
+            "backgroundColor": "rgba(50, 50, 50, 0.9)",
+            "color": "white",
+            "fontFamily": "Arial",
+            "padding": "10px",
+        },
         },
         map_style="mapbox://styles/mapbox/light-v9",
     )
@@ -233,10 +229,12 @@ def render_sec2():
         )
 
         # create histogram
+        df = subset.groupby("Neighbourhood", as_index=False)[selected_param_health].mean()
+
         fig = go.Figure()
         fig.add_trace(
             go.Histogram(
-                x=subset_health[selected_param_health],
+                x=df[selected_param_health],
                 nbinsx=bin_count,
                 opacity=0.75,  # transparency
                 name=HEALTH_MAPPING[selected_param_health], 
@@ -256,6 +254,23 @@ def render_sec2():
             selection_mode=("points", "box", "lasso"),
             key="histogram",
         )
+        if event and event.selection and event.selection.point_indices:
+            criteria = {
+                "Neighbourhood": df.iloc[event.selection.point_indices]["Neighbourhood"].unique().tolist(),
+            }
+            if criteria != st.session_state.selection_criteria:
+                st.session_state.selection_criteria = criteria
+            st.button(
+                "View in Raw Data",
+                key="view_hist",
+                on_click=select_subset,
+                kwargs={"method": "hist", "criteria": criteria},
+                disabled=(st.session_state.active_view == "hist"),
+                use_container_width=True,
+            )
+        else:
+            if st.session_state.active_view == "hist":
+                reset_view()
         
 
     with col2:
@@ -267,7 +282,8 @@ def render_sec2():
         x_smooth = smoothed[:, 0]
         y_smooth = smoothed[:, 1]
 
-
+        #df = water_quality_neighborhood.groupby("Neighbourhood", as_index=False)[[selected_param_health, selected_param_water]].mean()
+        #st.dataframe(df)
         # Create figure
         fig = go.Figure()
         fig.add_trace(
@@ -304,23 +320,68 @@ def render_sec2():
             selection_mode=("points", "box", "lasso"),
             key="change_over_time",
         )
-    #     if event and event.selection and event.selection.point_indices:
-    #         criteria = {
-    #             "year_month": df_grouped.iloc[event.selection.point_indices]["year_month"].unique().tolist(),
-    #             "Neighbourhood": ([selected_area] if selected_area != "Whole NYC" else NEIGHBOUR_NAME),
-    #         }
-    #         if criteria != st.session_state.selection_criteria:
-    #             st.session_state.selection_criteria = criteria
-    #         st.button(
-    #             "View in Raw Data",
-    #             key="view_trend",
-    #             on_click=select_subset,
-    #             kwargs={"method": "trend", "criteria": criteria},
-    #             disabled=(st.session_state.active_view == "trend"),
-    #             use_container_width=True,
-    #         )
-    #     else:
-    #         if st.session_state.active_view == "trend":
-    #             reset_view()
+        if event and event.selection and event.selection.point_indices:
+            #st.dataframe(df.iloc[event.selection.point_indices])
+            criteria = {
+                selected_param_health: water_quality_neighborhood.iloc[event.selection.point_indices][selected_param_health].unique().tolist(),
+                selected_param_water: water_quality_neighborhood.iloc[event.selection.point_indices][selected_param_water].unique().tolist(),
 
+            }
+            if criteria != st.session_state.selection_criteria:
+                st.session_state.selection_criteria = criteria
+            st.button(
+                "View in Raw Data",
+                key="view_trend",
+                on_click=select_subset,
+                kwargs={"method": "trend", "criteria": criteria},
+                disabled=(st.session_state.active_view == "trend"),
+                use_container_width=True,
+            )
+        else:
+            if st.session_state.active_view == "trend":
+                reset_view()
+
+    st.subheader("Explore Raw Data")
+
+    columns_to_display = ["Residual_Chlorine", "Turbidity", "Neighbourhood",
+                          "PrematureMortality", "PretermBirths", "SMM",
+                      "HepB", "HepC", "TB"]
+
+    if st.session_state.view_subset:
+        st.button(
+            "View all data",
+            key="view_all",
+            on_click=reset_view,
+            disabled=not st.session_state.view_subset,
+        )
+
+    display_df = water_quality_neighborhood[columns_to_display].copy()
+    if st.session_state.view_subset:
+        for col, vals in st.session_state.selection_criteria.items():
+            display_df = display_df[display_df[col].isin(vals)]
+
+    display_df.rename(columns={k: v for k, v in HEALTH_MAPPING.items() if k in water_quality_neighborhood.columns}, inplace=True)
+    display_df.rename(columns={k: v for k, v in NAME_MAPPING.items() if k in water_quality_neighborhood.columns}, inplace=True)
+
+    # build grid options
+    gb = GridOptionsBuilder.from_dataframe(display_df)
+    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=15)
+    gb.configure_default_column(
+        filter=True,
+        sortable=True,
+        cellStyle={"textAlign": "center"},
+        wrapHeaderText=True,
+        autoHeaderHeight=True,
+    )
+    # we need to explicitly set the header class to normalize the header position
+    for col in display_df.columns:
+        gb.configure_column(col, headerClass="centered-header")
+
+    grid_options = gb.build()
+
+    AgGrid(display_df, gridOptions=grid_options, height=400, fit_columns_on_grid_load=True)
+
+    if st.session_state.view_subset:
+        with st.expander("View Current Selection Criteria", expanded=False):
+            st.write({k: list(v) for k, v in st.session_state.selection_criteria.items()})
     
