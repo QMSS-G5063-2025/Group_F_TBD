@@ -20,9 +20,21 @@ sys.path.append(BASE_DIR)
 
 from utils.data import load_data, load_shapefile
 from utils.map import get_view_state
-from utils.utils import COLOR_BAR_SETTING, NAME_MAPPING, get_color_map, reset_view, select_subset
+from utils.utils import COLOR_BAR_SETTING, NAME_MAPPING, get_color_map
 
 DATA_BASE = BASE_DIR.parent / "data"
+
+
+def select_subset(method):
+    st.session_state.view_subset = True
+    # st.session_state.selection_criteria[method] = criteria
+    st.session_state.active_view = method
+
+
+def reset_view(reset_key):
+    st.session_state.view_subset = False
+    st.session_state.selection_criteria[reset_key] = {}
+    st.session_state.active_view = None
 
 
 def render_sec1():
@@ -33,7 +45,7 @@ def render_sec1():
     if "view_subset" not in st.session_state:
         st.session_state.view_subset = False
     if "selection_criteria" not in st.session_state:
-        st.session_state.selection_criteria = {}
+        st.session_state.selection_criteria = {"hist":{}, "trend":{}}
     if "active_view" not in st.session_state:
         st.session_state.active_view = None
     st.markdown(
@@ -243,19 +255,18 @@ def render_sec1():
                 "year_month": [selected_time],
                 "Neighbourhood": df.iloc[event.selection.point_indices]["Neighbourhood"].unique().tolist(),
             }
-            if criteria != st.session_state.selection_criteria:
-                st.session_state.selection_criteria = criteria
+            st.session_state.selection_criteria["hist"] = criteria
             st.button(
                 "View in Raw Data",
                 key="view_hist",
                 on_click=select_subset,
-                kwargs={"method": "hist", "criteria": criteria},
+                kwargs={"method": "hist"},
                 disabled=(st.session_state.active_view == "hist"),
                 use_container_width=True,
             )
         else:
             if st.session_state.active_view == "hist":
-                reset_view()
+                reset_view("hist")
 
     with col2:
         # set slide bar
@@ -357,19 +368,18 @@ def render_sec1():
                 "year_month": df_grouped.iloc[event.selection.point_indices]["year_month"].unique().tolist(),
                 "Neighbourhood": ([selected_area] if selected_area != "Whole NYC" else NEIGHBOUR_NAME),
             }
-            if criteria != st.session_state.selection_criteria:
-                st.session_state.selection_criteria = criteria
+            st.session_state.selection_criteria["trend"] = criteria
             st.button(
                 "View in Raw Data",
                 key="view_trend",
                 on_click=select_subset,
-                kwargs={"method": "trend", "criteria": criteria},
+                kwargs={"method": "trend"},
                 disabled=(st.session_state.active_view == "trend"),
                 use_container_width=True,
             )
         else:
             if st.session_state.active_view == "trend":
-                reset_view()
+                reset_view("trend")
 
     ########################################
     # Preview raw data
@@ -383,12 +393,13 @@ def render_sec1():
             "View all data",
             key="view_all",
             on_click=reset_view,
+            kwargs={"reset_key": st.session_state.active_view},
             disabled=not st.session_state.view_subset,
         )
 
     display_df = water_quality[columns_to_display].copy()
     if st.session_state.view_subset:
-        for col, vals in st.session_state.selection_criteria.items():
+        for col, vals in st.session_state.selection_criteria[st.session_state.active_view].items():
             display_df = display_df[display_df[col].isin(vals)]
 
     display_df.rename(columns={k: v for k, v in NAME_MAPPING.items() if k in df.columns}, inplace=True)
@@ -413,4 +424,6 @@ def render_sec1():
 
     if st.session_state.view_subset:
         with st.expander("View Current Selection Criteria", expanded=False):
-            st.write({k: list(v) for k, v in st.session_state.selection_criteria.items()})
+            st.write(
+                {k: list(v) for k, v in st.session_state.selection_criteria[st.session_state.active_view].items()}
+            )
