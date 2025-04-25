@@ -10,6 +10,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder
 from statsmodels.nonparametric.smoothers_lowess import lowess
 from matplotlib.colors import TwoSlopeNorm, to_hex
 import numpy as np
+from shapely.geometry import mapping
 
 ########################################
 # global setting
@@ -20,7 +21,7 @@ sys.path.append(BASE_DIR)
 
 from utils.data import load_data, load_shapefile
 from utils.map import get_view_state
-from utils.utils import COLOR_BAR_SETTING, NAME_MAPPING, get_color_map, reset_view, select_subset
+from utils.utils import COLOR_BAR_SETTING, COLOR_BAR_HEALTH, COLOR_BAR_DEMO, HEALTH_MAPPING, DEMO_MAPPING, NAME_MAPPING, get_color_map, reset_view, select_subset
 
 DATA_BASE = BASE_DIR.parent / "data"
 
@@ -62,6 +63,10 @@ def render_sec3():
     # Get sets of neighborhood names from both datasets
     neighborhoods_in_health = set(nta_health_demo["NTA_Name"].unique())
     neighborhoods_in_water = set(water_quality["Neighbourhood"].unique())
+    neighborhood_health_merged = pd.merge(left= nta_health_demo, right= neighbourhood,
+                                          left_on="NTA_Code", right_on= "NTACode",
+                                          how = "left")
+    neighborhood_health_merged.dropna(inplace=True)
     
 #    # Find missing neighborhoods
 #    missing_neighborhoods = neighborhoods_in_health - neighborhoods_in_water
@@ -77,7 +82,9 @@ def render_sec3():
     avg_water_quality = water_quality_2015.groupby("Neighbourhood", as_index=False).mean(numeric_only=True)
     
     # Merge with nta_health_demo
-    merged_df = avg_water_quality.merge(nta_health_demo, left_on="Neighbourhood", right_on="NTA_Name", how="inner")
+    merged_df = avg_water_quality.merge(neighborhood_health_merged, left_on="Neighbourhood", right_on="NTA_Name", how="inner")
+    
+    merged_df["geometry"] = merged_df["geometry"].apply(mapping)
     
 #    st.write(f"Original water quality records: {len(water_quality)}")
 #    st.write(f"Health/demographic records: {len(nta_health_demo)}")
@@ -107,37 +114,49 @@ def render_sec3():
     NEIGHBOUR_NAME = ["Whole NYC"] + sorted(water_quality["Neighbourhood"].unique().tolist())
 
     ########################################
-    # plot map
+    # plot map (demographics as base color)
     ########################################
-    st.subheader("Water Quality of NYC")
+    st.subheader("NYC Health Outcomes by Demographic Characteristics")
 
-    # add control components
+    # Demographic categories
+    demo_options = {
+        "Hispanic": "Hispanic",
+        "White (Non-Hispanic)": "WhiteNonHisp",
+        "Black (Non-Hispanic)": "BlackNonHisp",
+        "Asian / Pacific Islander": "AsianPI",
+        "Other Race": "OtherRace"
+    }
+    
+    # Add control components
     col1, col2, col3 = st.columns(3)
 
     with col1:
         st.markdown(
-            "<p style='font-size:17px; font-weight:bold;'>Water Quality Monitoring Indicators</p>",
+            "<p style='font-size:17px; font-weight:bold;'>Demographic Group</p>",
             unsafe_allow_html=True,
-        )  # use HTML to set font size and weight
-        selected_param = st.radio(
-            "Water Quality Monitoring Indicators",
-            options=["Residual_Chlorine", "Turbidity"],
-            format_func=lambda x: NAME_MAPPING[x],
+        )
+        selected_param_demo = st.selectbox(
+            "Demographic Variable",
+            options=list(demo_options.values()),
+            format_func=lambda x: DEMO_MAPPING[x],
             index=0,
-            label_visibility="collapsed",  # hide original label
+            label_visibility="collapsed",
         )
 
     with col2:
         st.markdown(
-            "<p style='font-size:17px; font-weight:bold;'>Sample Time</p>",
+            "<p style='font-size:17px; font-weight:bold;'>Health Outcomes</p>",
             unsafe_allow_html=True,
         )
-        selected_time = st.select_slider(
-            "Sample Time", options=MONTH, value="2024-01", label_visibility="collapsed"
+        selected_param_health = st.selectbox(
+            "Health Outcomes",
+            options=["PrematureMortality", "PretermBirths", "SMM", "HepB", "HepC", "TB"],
+            format_func=lambda x: HEALTH_MAPPING[x],
+            index=0,
+            label_visibility="collapsed",
         )
 
     with col3:
-
         st.markdown(
             "<p style='font-size:17px; font-weight:bold;'>Your Interested Area</p>",
             unsafe_allow_html=True,
@@ -150,23 +169,52 @@ def render_sec3():
             label_visibility="collapsed",
         )
 
-    subset = water_quality.loc[water_quality["year_month"] == selected_time].copy()
+    subset = merged_df.copy()
+    subset = subset[subset.geometry.notnull()]
 
-    rgba_colors, colorbar_html = get_color_map(
-        subset[selected_param], NAME_MAPPING[selected_param], **COLOR_BAR_SETTING[selected_param]
+    # Polygon color by demographics
+    rgba_demo, colorbar_demo = get_color_map(
+        subset[selected_param_demo],
+        DEMO_MAPPING[selected_param_demo],
+        **COLOR_BAR_DEMO[selected_param_demo]
     )
-    subset["color"] = rgba_colors.tolist()
-    subset["tooltip"] = subset.apply(
-        lambda row: f"<b>Neighbourhood:</b> {row['Neighbourhood']}<br/><b>Sample Time:</b> {selected_time}<br/><b>{NAME_MAPPING[selected_param]}:</b> {row[selected_param]:.2f}",
+    subset["demo_color"] = rgba_demo.tolist()
+    subset["tooltip_demo"] = subset.apply(
+        lambda row: f"<b>{DEMO_MAPPING[selected_param_demo]}:</b> {row[selected_param_demo]:.2f}<br/><b>Neighbourhood:</b> {row['Neighbourhood']}",
         axis=1,
     )
 
-    # map layer
-    ## help zoom in to interested area
-    view_state = get_view_state(neighbourhood, selected_area)
+    # Point color by health outcomes
+    rgba_health, colorbar_health = get_color_map(
+        subset[selected_param_health],
+        HEALTH_MAPPING[selected_param_health],
+        **COLOR_BAR_HEALTH[selected_param_health]
+    )
+    subset["health_color"] = rgba_health.tolist()
+    subset["tooltip_health"] = subset.apply(
+        lambda row: f"<b>{HEALTH_MAPPING[selected_param_health]}:</b> {row[selected_param_health]}<br/><b>Neighbourhood:</b> {row['NTA_Name']}",
+        axis=1,
+    )
 
-    # polygon layer
-    neighbourhood_json = json.loads(neighbourhood.to_json())
+    view_state = get_view_state(neighbourhood, selected_area)
+    
+    # Polygons
+    neighbourhood_json = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": row["geometry"],
+                "properties": {
+                    "fill_color": row["demo_color"],
+                    "tooltip": row["tooltip_demo"]
+                }
+            }
+            for _, row in subset.iterrows()
+        ]
+    }
+
+    # Polygon layer w demographic coloring
     polygon_layer = pdk.Layer(
         "GeoJsonLayer",
         neighbourhood_json,
@@ -174,7 +222,7 @@ def render_sec3():
         filled=True,
         extruded=False,
         opacity=0.6,
-        get_fill_color=[200, 200, 200, 150],
+        get_fill_color="properties.fill_color",
         get_line_color=[100, 100, 100, 200],
         get_line_width=2,
         line_width_units="pixels",
@@ -182,20 +230,21 @@ def render_sec3():
         line_width_max_pixels=4,
         pickable=True,
         auto_highlight=True,
+        highlight_color=[200, 200, 200, 150]
     )
 
-    # point layer
+    # Point layer w health outcome
     point_layer = pdk.Layer(
         "ScatterplotLayer",
         data=subset,
         get_position=["longitude", "latitude"],
         get_radius=150,
-        get_fill_color="color",
+        get_fill_color="health_color",
         pickable=True,
         auto_highlight=True,
+        get_tooltip="tooltip_health"
     )
 
-    # combine
     deck = pdk.Deck(
         layers=[polygon_layer, point_layer],
         initial_view_state=view_state,
@@ -210,11 +259,11 @@ def render_sec3():
         },
         map_style="mapbox://styles/mapbox/light-v9",
     )
-
     st.pydeck_chart(deck)
 
-    # set color bar
-    st.markdown(colorbar_html, unsafe_allow_html=True)
+    st.markdown(colorbar_demo, unsafe_allow_html=True)
+    st.markdown(colorbar_health, unsafe_allow_html=True)
+
 
     ########################################
     # plot summary plot
@@ -224,14 +273,6 @@ def render_sec3():
 
     st.subheader("Demographic Breakdown for Selected Neighborhood")
     
-    # Set demographic categories
-    demo_options = {
-        "Hispanic": "Hispanic",
-        "White (Non-Hispanic)": "WhiteNonHisp",
-        "Black (Non-Hispanic)": "BlackNonHisp",
-        "Asian / Pacific Islander": "AsianPI",
-        "Other Race": "OtherRace"
-    }
     display_labels = list(demo_options.keys())
     column_keys = list(demo_options.values())
     # Find the demographic row for selected neighborhood
@@ -253,7 +294,7 @@ def render_sec3():
                 theta=radar_labels,
                 fill='toself',
                 name="Demographic %",
-                line=dict(color="rgba(231, 76, 60, 0.7)", width=3),
+                line=dict(color="rgba(255, 105, 180, 0.7)", width=3),
                 marker=dict(size=12),
                 hovertemplate="%{theta}: %{r:.1f}%<extra></extra>"
             ))
@@ -276,11 +317,11 @@ def render_sec3():
             st.plotly_chart(radar_fig, use_container_width=True)
         elif chart_type == "Bar Chart":
             bar_colors = {
-                "Hispanic": "#E74C3C",       # Red
-                "WhiteNonHisp": "#1F77B4",   # Blue
-                "BlackNonHisp": "#2CA02C",   # Green
-                "AsianPI": "#FF7F0E",        # Orange
-                "OtherRace": "#000000"       # Black
+                "WhiteNonHisp": "#2CA02C",   # green
+                "BlackNonHisp": "#9467BD",   # purple
+                "AsianPI": "#FF7F0E",        # orange
+                "Hispanic": "#D62728",       # red
+                "OtherRace": "#7F7F7F"       # gray
             }
             # Match display_label to color w column name
             colors = [bar_colors.get(demo_options[label], "gray") for label in display_labels]
@@ -313,6 +354,12 @@ def render_sec3():
     # *****CHANGED: START Two scatterplots with custom color mapping *****
 
     st.subheader("Demographic Groups vs. Poverty and Education (Colored by Water Quality)")
+    
+    selected_x_label = st.selectbox(
+        "Demographic group",
+        options=list(demo_options.keys())
+    )
+    selected_x = demo_options[selected_x_label]
 
     y_axis_options = {
         "Poverty (%)": "Poverty",
@@ -322,15 +369,21 @@ def render_sec3():
         "Turbidity": "Turbidity",
         "Residual Chlorine": "Residual_Chlorine"
     }
-    # Get correct colorbar label and color settings
-    colorbar_title = NAME_MAPPING.get(selected_param, selected_param)
-    color_settings = COLOR_BAR_SETTING.get(selected_param, {})
+
+    # Get water quality metric
+    color_metric_label = st.selectbox("Color by Water Quality Metric", list(color_options.keys()), key="color_metric")
+    color_metric = color_options[color_metric_label]
+
+    # Get color settings for the selected color metric
+    colorbar_title = NAME_MAPPING.get(color_metric, color_metric)
+    color_settings = COLOR_BAR_SETTING.get(color_metric, {})
     cmap = color_settings.get("cmap", "OrRd")
     min_clip = color_settings.get("min_clip")
     max_clip = color_settings.get("max_clip")
     log_scale_mapping = color_settings.get("log_scale_mapping", False)
-    # Get colors and html for shared colorbar
-    selected_vals = demo_2015[selected_param]
+
+    # Colors for the selected color metric
+    selected_vals = demo_2015[color_metric]
     colors, colorbar_html = get_color_map(
         vals=selected_vals,
         selected_param=colorbar_title,
@@ -343,20 +396,19 @@ def render_sec3():
     hex_colors = [to_hex(c / 255) for c in colors]
 
     col1, col2 = st.columns(2)
+
+    # Plot 1: always Poverty on y-axis
     with col1:
-        st.write("#### Plot 1")
-        x1_label = st.selectbox("X-axis (1)", list(demo_options.keys()), key="x1")
-        y1_label = st.selectbox("Y-axis (1)", list(y_axis_options.keys()), key="y1")
-        x1 = demo_options[x1_label]
-        y1 = y_axis_options[y1_label]
+        st.write("#### Plot 1: % of Population Under Federal Poverty Level")
+        y1 = "Poverty"
 
         hovertext1 = [
-            f"{row['Neighbourhood']}<br>{x1_label}: {row[x1]:.1f}%<br>{y1_label}: {row[y1]:.1f}%<br>{colorbar_title}: {row[selected_param]:.2f}"
+            f"{row['Neighbourhood']}<br>{selected_x_label}: {row[selected_x]:.1f}%<br>Poverty: {row[y1]:.1f}%<br>{colorbar_title}: {row[color_metric]:.2f}"
             for _, row in demo_2015.iterrows()
         ]
         fig1 = go.Figure()
         fig1.add_trace(go.Scatter(
-            x=demo_2015[x1],
+            x=demo_2015[selected_x],
             y=demo_2015[y1],
             mode="markers",
             marker=dict(
@@ -368,27 +420,25 @@ def render_sec3():
             hoverinfo="text"
         ))
         fig1.update_layout(
-            xaxis_title=f"{x1_label} (%)",
-            yaxis_title=f"{y1_label}",
-            title=f"{y1_label} vs {x1_label}",
+            xaxis_title=f"{selected_x_label} (%)",
+            yaxis_title="Poverty (%)",
+            title=f"Poverty vs {selected_x_label}",
             dragmode="zoom"
         )
         st.plotly_chart(fig1, use_container_width=True, key="plot_left")
 
+    # Plot 2: always Education on y-axis
     with col2:
-        st.write("#### Plot 2")
-        x2_label = st.selectbox("X-axis (2)", list(demo_options.keys()), key="x2")
-        y2_label = st.selectbox("Y-axis (2)", list(y_axis_options.keys()), key="y2")
-        x2 = demo_options[x2_label]
-        y2 = y_axis_options[y2_label]
+        st.write("#### Plot 2: % of >=25 y/o Population with Less Than High School Level Education")
+        y2 = "EduLessThanHS"
 
         hovertext2 = [
-            f"{row['Neighbourhood']}<br>{x2_label}: {row[x2]:.1f}%<br>{y2_label}: {row[y2]:.1f}%<br>{colorbar_title}: {row[selected_param]:.2f}"
+            f"{row['Neighbourhood']}<br>{selected_x_label}: {row[selected_x]:.1f}%<br>Less than HS: {row[y2]:.1f}%<br>{colorbar_title}: {row[color_metric]:.2f}"
             for _, row in demo_2015.iterrows()
         ]
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(
-            x=demo_2015[x2],
+            x=demo_2015[selected_x],
             y=demo_2015[y2],
             mode="markers",
             marker=dict(
@@ -400,16 +450,17 @@ def render_sec3():
             hoverinfo="text"
         ))
         fig2.update_layout(
-            xaxis_title=f"{x2_label} (%)",
-            yaxis_title=f"{y2_label}",
-            title=f"{y2_label} vs {x2_label}",
+            xaxis_title=f"{selected_x_label} (%)",
+            yaxis_title="Less than HS Education (%)",
+            title=f"Education vs {selected_x_label}",
             dragmode="zoom"
         )
         st.plotly_chart(fig2, use_container_width=True, key="plot_right")
 
+    # Centered colorbar
     colorbar_container = st.container()
     with colorbar_container:
-        _, center_col, _ = st.columns([1, 4, 1])  # Attempt to center...
+        _, center_col, _ = st.columns([1, 4, 1])
         with center_col:
             st.markdown(
                 f"<div style='display: flex; justify-content: center;'>{colorbar_html}</div>",
@@ -417,6 +468,7 @@ def render_sec3():
             )
 
     # *****CHANGED: END Two scatterplots with custom color mapping *****
+
 
     ########################################
     # Preview raw data
