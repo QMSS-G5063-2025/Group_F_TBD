@@ -16,6 +16,13 @@ HEALTH_MAPPING = {"PrematureMortality": "Premature Mortality (Rate/100,000)",
                 "HepB": "Chronic Hepatitis B (Rate/100,000)",
                 "HepC": "Chronic Hepatitis C (Rate/100,000)",
                 "TB": "Tuberculosis Cases (Rate/100,000)"}
+                
+DEMO_MAPPING = {"Hispanic": "Hispanic",
+                "WhiteNonHisp": "White (Non-Hispanic)",
+                "BlackNonHisp": "Black (Non-Hispanic)",
+                "AsianPI": "Asian / Pacific Islander",
+                "OtherRace": "Other Race"}
+
 
 COLOR_BAR_SETTING = {
     "Residual_Chlorine": {"cmap": "bwr", "min_clip": None, "max_clip": None, "log_scale_mapping": False},
@@ -34,8 +41,17 @@ COLOR_BAR_HEALTH = {
     "HepC": {"cmap": "Blues", "min_clip": None, "max_clip": None, "log_scale_mapping": False,
                            "force_median": True},
     "TB": {"cmap": "Blues", "min_clip": None, "max_clip": None, "log_scale_mapping": False,
-                           "force_median": True}                 
+                           "force_median": True}
 }
+
+COLOR_BAR_DEMO = {
+    "WhiteNonHisp": { "cmap": "Greens", "min_clip": 0, "max_clip": 100, "log_scale_mapping": False},
+    "BlackNonHisp": {"cmap": "Purples", "min_clip": 0, "max_clip": 100, "log_scale_mapping": False},
+    "AsianPI": {"cmap": "Oranges", "min_clip": 0, "max_clip": 100, "log_scale_mapping": False},
+    "Hispanic": {"cmap": "Reds", "min_clip": 0, "max_clip": 100, "log_scale_mapping": False},
+    "OtherRace": {"cmap": "Greys", "min_clip": 0, "max_clip": 100, "log_scale_mapping": False}
+}
+
 
 def get_color_map(
     vals,
