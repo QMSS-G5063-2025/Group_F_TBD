@@ -280,8 +280,8 @@ def render_sec3():
     if not demo_row.empty:
         demo_values = demo_row.iloc[0][column_keys].tolist()
         total_percent = sum(demo_values)
-        if not total_percent == 100.00:
-            st.warning(f"Total demographic percentage = {total_percent:.2f}%, but should be 100%")
+#        if not total_percent == 100.00:
+#            st.warning(f"Total demographic percentage = {total_percent:.2f}%, but should be 100%")
 
         # Add radar/bar chart toggle
         chart_type = st.radio("Display as:", ["Radar Chart", "Bar Chart"], horizontal=True)
