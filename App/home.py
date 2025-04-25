@@ -3,19 +3,27 @@ import streamlit as st
 
 def render_home():
     # title
-    st.title("Project Name")
+    st.title("What is in our water?")
 
     col1, col2 = st.columns([3, 1])
     with col1:
-        st.header("Objective")
-        st.write("Project overview")
+        
+        st.image("https://i.ytimg.com/vi/oCiagTL2K-Q/hqdefault.jpg")
+        st.markdown("""[Image Source](https://www.google.com/url?sa=i&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DoCiagTL2K-Q&psig=AOvVaw0UenNNRz_2Kmiz8iL9c_BG&ust=1745697773717000&source=images&cd=vfe&opi=89978449&ved=0CBcQjhxqGAoTCIC1sI_984wDFQAAAAAdAAAAABDyAQ)""")
+        st.header("Visualization of demographic patterns of water quality and health outcomes in New York.")
+        st.markdown("""The New York City Mayor's office recognizes the deep and structural 
+            history of [environmental injustice in New York](https://climate.cityofnewyork.us/ejnyc-report/history-of-environmental-injustice-and-racism-in-nyc/). To this day, there is strong evidence
+             for [water inequality throughout the United States](https://www.nature.com/articles/s41467-021-23898-z). We focus on New York since             it is a large and heterogenous city with  
+            complex plumbing and water infrastructure, and a diversity of neighborhoods with varying geographical and demographic characteristics. In the three sections
+            presented, you may find maps and plots illustrating changes in water quality measurements over time, and how they
+            correlate with health outcomes and neighborhood demographics.""")
 
     with col2:
         st.subheader("Developer")
         st.write("- Aziz Zafar (az2798)\n- Naufa Amirani (nfa2120)\n- Di Liu (dl3738)")
 
     st.divider()
-    st.header("Data source")
+    st.header("Data sources")
     st.markdown(
         """
     - Water Quality Data
@@ -33,7 +41,7 @@ def render_home():
     st.divider()
     st.header("Sections")
     cols = st.columns(3)
-    sections = ["Water Quality Change over Time", "Section2", "Section3"]
+    sections = ["Water Quality Change over Time", "Water Quality and Health", "Water Quality and Demographics"]
     for col, section in zip(cols, sections):
         with col:
             if st.button(f"Go to {section}"):
