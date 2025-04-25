@@ -10,7 +10,7 @@
 
 ## Publicly Available Website
 
-We host our website [here](https://groupftbd-bntxpudsxzmibfu3iayopw.streamlit.app/) for your easy access.
+We host our website [here](https://groupfwaterquality-mn32yn8wy3q5fn7qtdzyhu.streamlit.app/) for your easy access.
 
 ## Local Installation
 
