@@ -25,6 +25,17 @@ from utils.utils import COLOR_BAR_SETTING, COLOR_BAR_HEALTH, COLOR_BAR_DEMO, HEA
 
 DATA_BASE = BASE_DIR.parent / "data"
 
+def select_subset(method):
+    st.session_state.view_subset = True
+    # st.session_state.selection_criteria[method] = criteria
+    st.session_state.active_view = method
+
+
+def reset_view(reset_key):
+    st.session_state.view_subset = False
+    st.session_state.selection_criteria[reset_key] = {"dropdown_selection":{}, "water_selection":{}}
+    st.session_state.active_view = None
+
 
 def render_sec3():
     # title
@@ -168,6 +179,28 @@ def render_sec3():
             help="Enter text to quickly filter the area",
             label_visibility="collapsed",
         )
+
+    #####
+    # Build selection criteria
+    criteria = {
+        "demo_var": selected_param_demo,
+        "health_var": selected_param_health,
+        "area": selected_area,
+    }
+    st.session_state.selection_criteria["dropdown_selection"] = criteria
+    st.session_state.selected_param_demo = selected_param_demo
+    st.session_state.selected_param_health = selected_param_health
+    
+    st.button(
+        "View Selected in Raw Data",
+        key="view_dropdown_selection",
+        on_click=select_subset,
+        kwargs={"method": "dropdown_selection"},
+        disabled=(st.session_state.active_view == "dropdown_selection"),
+        use_container_width=True,
+    )
+    #####
+
 
     subset = merged_df.copy()
     subset = subset[subset.geometry.notnull()]
@@ -394,6 +427,26 @@ def render_sec3():
         log_scale_mapping=log_scale_mapping
     )
     hex_colors = [to_hex(c / 255) for c in colors]
+    
+    #####
+    # Build selection criteria
+    criteria = {
+        "water_var": color_metric,
+        "demo_var": selected_x
+    }
+    st.session_state.selection_criteria["water_selection"] = criteria
+    st.session_state.selected_param_demo = selected_param_demo
+    st.session_state.selected_param_health = selected_param_health
+
+    st.button(
+        "View Selected in Raw Data",
+        key="view_water_selection",
+        on_click=select_subset,
+        kwargs={"method": "water_selection"},
+        disabled=(st.session_state.active_view == "water_selection"),
+        use_container_width=True,
+    )
+    #####
 
     col1, col2 = st.columns(2)
 
@@ -468,49 +521,67 @@ def render_sec3():
             )
 
     # *****CHANGED: END Two scatterplots with custom color mapping *****
-
+    
 
     ########################################
     # Preview raw data
     ########################################
     st.subheader("Explore Raw Data")
 
-    columns_to_display = ["Hispanic", "WhiteNonHisp", "BlackNonHisp", "AsianPI", "OtherRace",
-                        "Poverty", "EduLessThanHS"]
+    columns_to_display = ["Neighbourhood",
+            "Hispanic", "WhiteNonHisp", "BlackNonHisp", "AsianPI", "OtherRace",
+            "Poverty", "EduLessThanHS",
+            "Turbidity", "Residual_Chlorine",
+            "PrematureMortality", "PretermBirths", "SMM", "HepB", "HepC", "TB"]
 
     if st.session_state.view_subset:
         st.button(
             "View all data",
             key="view_all",
             on_click=reset_view,
+            kwargs={"reset_key": st.session_state.active_view},
             disabled=not st.session_state.view_subset,
         )
 
+    # Start with full data...
     display_df = merged_df[columns_to_display].copy()
-    if st.session_state.view_subset:
-        for col, vals in st.session_state.selection_criteria.items():
-            display_df = display_df[display_df[col].isin(vals)]
 
+    # Subset if needed
+    if st.session_state.view_subset:
+        # Get the selection criteria for dropdown selection
+        selection = st.session_state.selection_criteria.get(st.session_state.active_view, {})
+        if st.session_state.active_view == "dropdown_selection":
+            # Extract selected demo_var/health_var label from the dropdown
+            demo_var = selection.get("demo_var")
+            health_var = selection.get("health_var")
+            area = selection.get("area")
+            
+            # Start with only the "Neighbourhood" column
+            columns_to_display_for_df = ["Neighbourhood"]
+            # Add demo_var column
+            if demo_var in columns_to_display and demo_var not in columns_to_display_for_df:
+                columns_to_display_for_df.append(demo_var)
+            # Add health_var column
+            if health_var in columns_to_display and health_var not in columns_to_display_for_df:
+                columns_to_display_for_df.append(health_var)
+            # Only subset by area if not "Whole NYC"
+            if area and area != "Whole NYC":
+                display_df = display_df[display_df["Neighbourhood"] == area]
+            display_df = display_df[columns_to_display_for_df]
+                
+        elif st.session_state.active_view == "water_selection":
+            water_var = selection.get("water_var")
+            demo_var = selection.get("demo_var")
+            
+            # Start with "Neighbourhood", "Poverty", "EduLessThanHS" columns
+            columns_to_display_for_df = ["Neighbourhood", "Poverty", "EduLessThanHS"]
+            if demo_var in columns_to_display and demo_var not in columns_to_display_for_df:
+                columns_to_display_for_df.append(demo_var)
+            if water_var in columns_to_display and water_var not in columns_to_display_for_df:
+                columns_to_display_for_df.append(water_var)
+            display_df = display_df[columns_to_display_for_df]
+
+    # Clean up display names
     display_df.rename(columns={k: v for k, v in NAME_MAPPING.items() if k in display_df.columns}, inplace=True)
 
-    # build grid options
-    gb = GridOptionsBuilder.from_dataframe(display_df)
-    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=15)
-    gb.configure_default_column(
-        filter=True,
-        sortable=True,
-        cellStyle={"textAlign": "center"},
-        wrapHeaderText=True,
-        autoHeaderHeight=True,
-    )
-    # we need to explicitly set the header class to normalize the header position
-    for col in display_df.columns:
-        gb.configure_column(col, headerClass="centered-header")
-
-    grid_options = gb.build()
-
-    AgGrid(display_df, gridOptions=grid_options, height=400, fit_columns_on_grid_load=True)
-
-    if st.session_state.view_subset:
-        with st.expander("View Current Selection Criteria", expanded=False):
-            st.write({k: list(v) for k, v in st.session_state.selection_criteria.items()})
+    st.dataframe(display_df, use_container_width=True)
